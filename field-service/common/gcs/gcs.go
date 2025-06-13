@@ -10,18 +10,21 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/api/option"
 )
 
 type ServiceAccountKeyJSON struct {
-	Type         string `json:"type"`
-	ProjectID    string `json:"type"`
-	PrivateKeyID string `json:"type"`
-	PrivateKey   string `json:"type"`
-	ClientEmail  string `json:"type"`
-	ClientID     string `json:"type"`
-	AuthURI      string `json:"type"`
-	TokenURI     string `json:"type"`
-	AuthProvider string `json:"type"`
+	Type                    string `json:"type"`
+	ProjectID               string `json:"project_id"`
+	PrivateKeyID            string `json:"private_key_id"`
+	PrivateKey              string `json:"private_key"`
+	ClientEmail             string `json:"client_email"`
+	ClientID                string `json:"client_id"`
+	AuthURI                 string `json:"auth_uri"`
+	TokenURI                string `json:"token_uri"`
+	AuthProviderX509CertURL string `json:"auth_provider_x509_cert_url"`
+	ClientX509CertURL       string `json:"client_x509_cert_url"`
+	UniverseDomain          string `json:"universe_domain"`
 }
 
 type GCSClient struct {
@@ -42,44 +45,51 @@ func NewGCSClient(serviceAccountKeyJSON ServiceAccountKeyJSON, bucketName string
 
 func (g *GCSClient) createClient(ctx context.Context) (*storage.Client, error) {
 	reqBodyBytes := new(bytes.Buffer)
-	client, err := json.NewDecoder(reqBodyBytes).Encode(g.ServiceAccountKeyJSON)
+	err := json.NewEncoder(reqBodyBytes).Encode(g.ServiceAccountKeyJSON)
+	if err != nil {
+		logrus.Errorf("failed to encode service account key json: %v", err)
+		return nil, err
+	}
+
+	jsonByte := reqBodyBytes.Bytes()
+	client, err := storage.NewClient(ctx, option.WithCredentialsJSON(jsonByte))
 	if err != nil {
 		logrus.Errorf("failed to create client: %v", err)
 		return nil, err
 	}
-	return client, err
+
+	return client, nil
 }
 
 func (g *GCSClient) UploadFile(ctx context.Context, filename string, data []byte) (string, error) {
 	var (
-		contentType     = "application/octet-stream"
-		timeoutInSecond = 60
+		contentType      = "application/octet-stream"
+		timeoutInSeconds = 60
 	)
 
 	client, err := g.createClient(ctx)
 	if err != nil {
 		logrus.Errorf("failed to create client: %v", err)
-		return "", rr
+		return "", err
 	}
 
-	defer func(cllient *storage.Client) {
+	defer func(client *storage.Client) {
 		err := client.Close()
 		if err != nil {
 			logrus.Errorf("failed to close client: %v", err)
 			return
-
 		}
 	}(client)
 
-	ctx, cancel := context.WithCancel(ctx, time.Duration(timeoutInSecond)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutInSeconds)*time.Second)
 	defer cancel()
 
 	bucket := client.Bucket(g.BucketName)
-	object := bucket.object(filename)
+	object := bucket.Object(filename)
 	buffer := bytes.NewBuffer(data)
 
 	writer := object.NewWriter(ctx)
-	writer.Chuncksize = 0
+	writer.ChunkSize = 0
 
 	_, err = io.Copy(writer, buffer)
 	if err != nil {
@@ -101,5 +111,4 @@ func (g *GCSClient) UploadFile(ctx context.Context, filename string, data []byte
 
 	url := fmt.Sprintf("https://storage.googleapis.com/%s/%s", g.BucketName, filename)
 	return url, nil
-
 }

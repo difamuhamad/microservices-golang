@@ -10,7 +10,7 @@ func ErrMapping(err error) bool {
 	var (
 		GeneralErrors       = GeneralErrors
 		FieldErrors         = errField.FieldErrors
-		FieldScheduleErrors = errFieldSchedule.ErrFieldScheduleErrors
+		FieldScheduleErrors = errFieldSchedule.FieldScheduleErrors
 		TimeErrors          = errTime.TimeErrors
 	)
 

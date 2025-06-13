@@ -1,9 +1,9 @@
 package response
 
 import (
+	"field-service/constants"
+	errConstant "field-service/constants/error"
 	"net/http"
-	"user-service/constants"
-	errConstant "user-service/constants/error"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,16 +25,17 @@ type ParamHTTPRes struct {
 }
 
 func HttpResponse(param ParamHTTPRes) {
-	if param.Err != nil {
+	if param.Err == nil {
 		param.Gin.JSON(param.Code, Response{
 			Status:  constants.Success,
 			Message: http.StatusText(http.StatusOK),
 			Data:    param.Data,
 			Token:   param.Token,
 		})
+		return
 	}
 
-	message := errConstant.InternalServerError.Error()
+	message := errConstant.ErrInternalServerError.Error()
 	if param.Message != nil {
 		message = *param.Message
 	} else if param.Err != nil {
@@ -48,5 +49,4 @@ func HttpResponse(param ParamHTTPRes) {
 		Message: message,
 		Data:    param.Data,
 	})
-	return
 }

@@ -26,7 +26,7 @@ func HandlePanic() gin.HandlerFunc {
 				logrus.Errorf("recovered from panic: %v", r)
 				c.JSON(http.StatusInternalServerError, response.Response{
 					Status:  constants.Error,
-					Message: errConstant.InternalServerError.Error(),
+					Message: errConstant.ErrInternalServerError.Error(),
 				})
 				c.Abort()
 			}

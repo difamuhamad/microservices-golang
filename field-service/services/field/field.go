@@ -5,7 +5,7 @@ import (
 	"context"
 	"field-service/common/gcs"
 	"field-service/common/utils"
-	errConstant "field-service/constant/error"
+	errConstant "field-service/constants/error"
 	"field-service/domain/dto"
 	"field-service/domain/models"
 	"field-service/repositories"
@@ -14,6 +14,8 @@ import (
 	"mime/multipart"
 	"path"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type FieldService struct {
@@ -23,7 +25,7 @@ type FieldService struct {
 
 type IFieldService interface {
 	GetAllWithPagination(context.Context, *dto.FieldRequestParam) (*utils.PaginationResult, error)
-	GetAllWithoutPagination(context.Context) (*dto.FieldResponse, error)
+	GetAllWithoutPagination(context.Context) ([]dto.FieldResponse, error)
 	GetByUUID(context.Context, string) (*dto.FieldResponse, error)
 	Create(context.Context, *dto.FieldRequest) (*dto.FieldResponse, error)
 	Update(context.Context, string, *dto.UpdateFieldRequest) (*dto.FieldResponse, error)
@@ -31,10 +33,13 @@ type IFieldService interface {
 }
 
 func NewFieldService(repository repositories.IRepositoryRegistry, gcs gcs.IGCSClient) IFieldService {
-	return &FieldService{repository: repository}
+	return &FieldService{repository: repository, gcs: gcs}
 }
 
-func (f *FieldService) GetAllWithPagination(ctx context.Context, param *dto.FieldRequestParam) (*utils.PaginationResult, error) {
+func (f *FieldService) GetAllWithPagination(
+	ctx context.Context,
+	param *dto.FieldRequestParam,
+) (*utils.PaginationResult, error) {
 	fields, total, err := f.repository.GetField().FindAllWithPagination(ctx, param)
 	if err != nil {
 		return nil, err
@@ -53,14 +58,14 @@ func (f *FieldService) GetAllWithPagination(ctx context.Context, param *dto.Fiel
 		})
 	}
 
-	pagination := utils.PaginationParam{
+	pagination := &utils.PaginationParam{
 		Count: total,
 		Page:  param.Page,
 		Limit: param.Limit,
 		Data:  fieldResults,
 	}
 
-	response := utils.GeneratePagination(pagination)
+	response := utils.GeneratePagination(*pagination)
 	return &response, nil
 }
 
@@ -71,7 +76,6 @@ func (f *FieldService) GetAllWithoutPagination(ctx context.Context) ([]dto.Field
 	}
 
 	fieldResults := make([]dto.FieldResponse, 0, len(fields))
-
 	for _, field := range fields {
 		fieldResults = append(fieldResults, dto.FieldResponse{
 			UUID:         field.UUID,
@@ -80,6 +84,7 @@ func (f *FieldService) GetAllWithoutPagination(ctx context.Context) ([]dto.Field
 			Images:       field.Images,
 		})
 	}
+
 	return fieldResults, nil
 }
 
@@ -89,15 +94,17 @@ func (f *FieldService) GetByUUID(ctx context.Context, uuid string) (*dto.FieldRe
 		return nil, err
 	}
 
+	pricePerHour := float64(field.PricePerHour)
 	fieldResult := dto.FieldResponse{
 		UUID:         field.UUID,
 		Code:         field.Code,
 		Name:         field.Name,
-		PricePerHour: field.PricePerHour,
+		PricePerHour: utils.RupiahFormat(&pricePerHour),
 		Images:       field.Images,
 		CreatedAt:    field.CreatedAt,
 		UpdatedAt:    field.UpdatedAt,
 	}
+
 	return &fieldResult, nil
 }
 
@@ -107,28 +114,27 @@ func (f *FieldService) validateUpload(images []multipart.FileHeader) error {
 	}
 
 	for _, image := range images {
-		if image.Size >= 5*1024*1024 {
+		if image.Size > 5*1024*1024 {
 			return errConstant.ErrSizeTooBig
 		}
 	}
 	return nil
 }
 
-// Upload Process
 func (f *FieldService) processAndUploadImage(ctx context.Context, image multipart.FileHeader) (string, error) {
 	file, err := image.Open()
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 	defer file.Close()
 
 	buffer := new(bytes.Buffer)
-	_, err := io.Copy(buffer, file)
+	_, err = io.Copy(buffer, file)
 	if err != nil {
 		return "", err
 	}
 
-	filename := fmt.Sprintf("images/%s-%s-%s", time.Now().Format("20000010215005"), image.Filename, path.Ext(image.Filename))
+	filename := fmt.Sprintf("images/%s-%s-%s", time.Now().Format("20060102150405"), image.Filename, path.Ext(image.Filename))
 	url, err := f.gcs.UploadFile(ctx, filename, buffer.Bytes())
 	if err != nil {
 		return "", err
@@ -136,7 +142,6 @@ func (f *FieldService) processAndUploadImage(ctx context.Context, image multipar
 	return url, nil
 }
 
-// Upload Images
 func (f *FieldService) uploadImage(ctx context.Context, images []multipart.FileHeader) ([]string, error) {
 	err := f.validateUpload(images)
 	if err != nil {
@@ -151,7 +156,6 @@ func (f *FieldService) uploadImage(ctx context.Context, images []multipart.FileH
 		}
 		urls = append(urls, url)
 	}
-
 	return urls, nil
 }
 
@@ -170,7 +174,8 @@ func (f *FieldService) Create(ctx context.Context, request *dto.FieldRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	response := &dto.FieldResponse{
+
+	response := dto.FieldResponse{
 		UUID:         field.UUID,
 		Code:         field.Code,
 		Name:         field.Name,
@@ -179,52 +184,46 @@ func (f *FieldService) Create(ctx context.Context, request *dto.FieldRequest) (*
 		CreatedAt:    field.CreatedAt,
 		UpdatedAt:    field.UpdatedAt,
 	}
-	return response, nil
+	return &response, nil
 }
 
-// Update
-func (f *FieldService) Update(ctx context.Context, uuid string, request *dto.FieldRequest) (*dto.FieldResponse, error) {
-	field, err := f.repository.GetField().FindByUUID(ctx, uuid)
+func (f *FieldService) Update(ctx context.Context, uuidParam string, request *dto.UpdateFieldRequest) (*dto.FieldResponse, error) {
+	field, err := f.repository.GetField().FindByUUID(ctx, uuidParam)
 	if err != nil {
 		return nil, err
 	}
 
-	var imageUrl []string
+	var imageUrls []string
 	if request.Images == nil {
-		imageUrl = field.Images
-
+		imageUrls = field.Images
 	} else {
-		imageUrl, err = f.uploadImage(ctx, request.Images)
+		imageUrls, err = f.uploadImage(ctx, request.Images)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	fieldResult, err := f.repository.GetField().Update(ctx, uuid, &models.Field{
+	fieldResult, err := f.repository.GetField().Update(ctx, uuidParam, &models.Field{
 		Code:         request.Code,
 		Name:         request.Name,
 		PricePerHour: request.PricePerHour,
-		Images:       imageUrl,
+		Images:       imageUrls,
 	})
-	if err != nil {
-		return nil, err
-	}
 
-	return &dto.FieldResponse{
-		UUID:         fieldResult.UUID,
+	uuidParsed, _ := uuid.Parse(uuidParam)
+	response := dto.FieldResponse{
+		UUID:         uuidParsed,
 		Code:         fieldResult.Code,
 		Name:         fieldResult.Name,
 		PricePerHour: fieldResult.PricePerHour,
 		Images:       fieldResult.Images,
 		CreatedAt:    fieldResult.CreatedAt,
 		UpdatedAt:    fieldResult.UpdatedAt,
-	}, nil
+	}
+	return &response, nil
 }
 
-// Delete
 func (f *FieldService) Delete(ctx context.Context, uuid string) error {
-
-	// Check the data first
 	_, err := f.repository.GetField().FindByUUID(ctx, uuid)
 	if err != nil {
 		return err

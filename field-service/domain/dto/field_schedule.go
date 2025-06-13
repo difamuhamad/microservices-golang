@@ -1,6 +1,11 @@
 package dto
 
-import "time"
+import (
+	"field-service/constants"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type FieldScheduleRequest struct {
 	FieldID string   `json:"fieldID" validate:"required"`
@@ -17,23 +22,27 @@ type UpdateFieldScheduleRequest struct {
 	TimeID string `json:"timeID" validate:"required"`
 }
 
+type UpdateStatusFieldScheduleRequest struct {
+	FieldScheduleIDs []string `json:"fieldScheduleIDs" validate:"required"`
+}
+
 type FieldScheduleResponse struct {
-	UUID         string     `json:"uuid"`
-	FieldName    string     `json:"fieldName"`
-	PricePerHour int        `json:"pricePerHour"`
-	Date         int        `json:"date"`
-	Status       int        `json:"status"`
-	Time         int        `json:"time"`
-	CreatedAt    *time.Time `json:"createdAt"`
-	UpdatedAt    *time.Time `json:"updatedAt"`
+	UUID         uuid.UUID                         `json:"uuid"`
+	FieldName    string                            `json:"fieldName"`
+	PricePerHour int                               `json:"pricePerHour"`
+	Date         string                            `json:"date"`
+	Status       constants.FieldScheduleStatusName `json:"status"`
+	Time         string                            `json:"time"`
+	CreatedAt    *time.Time                        `json:"createdAt"`
+	UpdatedAt    *time.Time                        `json:"updatedAt"`
 }
 
 type FieldScheduleForBookingResponse struct {
-	UUID         string `json:"uuid"`
-	PricePerHour int    `json:"pricePerHour"`
-	Date         int    `json:"date"`
-	Status       int    `json:"status"`
-	Time         int    `json:"time"`
+	UUID         uuid.UUID                         `json:"uuid"`
+	PricePerHour string                            `json:"pricePerHour"`
+	Date         string                            `json:"date"`
+	Status       constants.FieldScheduleStatusName `json:"status"`
+	Time         string                            `json:"time"`
 }
 
 type FieldScheduleRequestParam struct {
@@ -44,5 +53,5 @@ type FieldScheduleRequestParam struct {
 }
 
 type FieldScheduleByFieldIDAndDateRequestParam struct {
-	Date string `form:"date" validate:"require"`
+	Date string `form:"date" validate:"required"`
 }
