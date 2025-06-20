@@ -1,7 +1,7 @@
 package error
 
 import (
-	errOrder "order-service/constants/error/Order"
+	errOrder "order-service/constants/error/order"
 )
 
 func ErrMapping(err error) bool {
