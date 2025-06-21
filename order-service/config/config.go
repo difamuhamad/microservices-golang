@@ -72,10 +72,10 @@ type Kafka struct {
 	TimeoutInMS           int      `json:"timeoutInMS"`
 	MaxRetry              int      `json:"maxRetry"`
 	Topics                []string `json:"topics"`
-	groupID               string   `json:"groupID`
+	GroupID               string   `json:"groupID"`
 	MaxWaitTimeInMs       int      `json:"maxWaitTimeInMs"`
 	MaxProcessingTimeInMs int      `json:"maxProcessingTimeInMs"`
-	BackoffTimeInMs       int      `json:"backoffTimeInMs"`
+	BackOffTimeInMs       int      `json:"backoffTimeInMs"`
 }
 
 func Init() {
